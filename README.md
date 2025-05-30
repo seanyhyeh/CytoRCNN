@@ -1,5 +1,12 @@
 # CytoRCNN
 Extracting global masks from cytorcnn predictions
+## Problem with CytoRCNN predictions
+CytoRCNN can not immediately produce masks for large images as it requires input images to be 256 by 256. 
+Tiling the image into 256 by 256 normally causes problems as one cell could be called in two adjacent tiles and labelled as two distinct cells. In the image shown below of two adjacent images, CytoRCNN produces different calls for the same cells that are in the 256 by 64 overlap (for example we will combine the three circled cells shown.) 
+![Screenshot 1](https://github.com/user-attachments/assets/a584c7e1-f34a-4a02-9ff5-ba65e93fada5)\
+Instead, we tiled the image as shown below into 256 by 256 with overlaps of 256 by 64 with adjacent tiles.
+![VMI_test_monocolor](https://github.com/user-attachments/assets/bf249bf4-47d7-4870-8c71-c481845ec6a3)\
+This way, all masks lie entirely within a tile (assuming cell diameter does not exceed 64). If a cell/nuclei call touches the border of the tile, we omit this call as a bordering tile must completely contain the mask. If a cell is contained entirely in the overlap region of 256 by 64, we merge the calls.
 ## CytoRCNN modifications
 I slightly changed the predict function in Cyto-R-CNN/src/cytorcnn/cytorcnn.py in order to return predictions as a python object instead of a json file. 
 ```
@@ -31,11 +38,7 @@ I slightly changed the predict function in Cyto-R-CNN/src/cytorcnn/cytorcnn.py i
 ```
 Also, increasing or decreasing `self.config.MODEL.ROI_HEADS.SCORE_THRESH_TEST` can increase or decrease number of prediction as the model becomes more loose or strict.
 ## Method
-![VMI_test_monocolor](https://github.com/user-attachments/assets/bf249bf4-47d7-4870-8c71-c481845ec6a3)\
-\
 We start by tiling the given image into tiles of 256 by 256 that overlap 256 by 64 with adjacent tiles. This is done because CytoRCNN requires inputs to be 256 by 256 and the overlap methodology later takes into account overcounting of a mask between two tiles.
-\
 ![VMI_test_diagonalcolor](https://github.com/user-attachments/assets/48e4f8fb-7ac0-47d6-bc4d-66701797bb0e)\
-\
 We proceed with a by-breadth approach on the diagonal shown in the image above. We start with the tile (0,0), (0,1), (1,0), (0,2), (1,1), (2,0) etc. We store tiles in the current diagonal in the list curr_polygons and we compare overlap with polygons in the previous diagonal (prev_polygons). When we reach a new diagonal, we add polygons stored in prev_polygons to global_polygons, update prev_polygons to be curr_polygons, and set curr_polygons to be an empty list.\\
 For each tile, we start by combining asks of the same type (nuclei or cell). Then we combine nuclei that are completely contained in another a cell. This is done using shapely's STRtree. Then, we add these masks into the list curr_polygons.
